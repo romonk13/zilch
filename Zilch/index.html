@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Zilch Scorekeeper</title>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    function ZilchScorekeeper() {
+      const [gameState, setGameState] = useState('setup');
+      const [players, setPlayers] = useState([]);
+      const [playerNames, setPlayerNames] = useState(['', '']);
+      const [targetScore, setTargetScore] = useState(10000);
+      const [finalRoundTriggered, setFinalRoundTriggered] = useState(false);
+      const [triggeringPlayer, setTriggeringPlayer] = useState(null);
+      const [playersWhoHadFinalTurn, setPlayersWhoHadFinalTurn] = useState(new Set());
+      const [winHistory, setWinHistory] = useState({});
+
+      const addPlayerNameField = () => {
+        if (playerNames.length < 7) {
+          setPlayerNames([...playerNames, '']);
+        }
+      };
+
+      const removePlayerNameField = (index) => {
+        if (playerNames.length > 2) {
+          setPlayerNames(playerNames.filter((_, i) => i !== index));
+        }
+      };
+
+      const updatePlayerName = (index, name) => {
+        const newNames = [...playerNames];
+        newNames[index] = name;
+        setPlayerNames(newNames);
+      };
+
+      const startGame = () => {
+        const validNames = playerNames.filter(name => name.trim() !== '');
+        if (validNames.length < 2) {
+          alert('Please enter at least 2 player names');
+          return;
+        }
+        if (targetScore <= 0) {
+          alert('Please enter a valid target score');
+          return;
+        }
+
+        const newPlayers = validNames.map(name => ({
+          name: name.trim(),
+          scores: [],
+          totalScore: 0,
+          consecutiveZs: 0,
+          hasStarted: false
+        }));
+
+        setPlayers(newPlayers);
+        setGameState('playing');
+        setFinalRoundTriggered(false);
+        setTriggeringPlayer(null);
+        setPlayersWhoHadFinalTurn(new Set());
+      };
+
+      const addScore = (playerIndex, points) => {
+        const newPlayers = [...players];
+        const player = newPlayers[playerIndex];
+
+        if (points === 'Z') {
+          if (!player.hasStarted) {
+            alert('Player must score 600+ in one turn before recording a zilch!');
+            return;
+          }
+          player.scores.push('Z');
+          player.consecutiveZs++;
+
+          if (player.consecutiveZs === 3) {
+            player.totalScore -= 1000;
+            player.consecutiveZs = 0;
+          }
+        } else {
+          if (!player.hasStarted) {
+            if (points >= 600) {
+              player.hasStarted = true;
+              player.scores.push(points);
+              player.totalScore += points;
+              player.consecutiveZs = 0;
+            } else {
+              player.scores.push(0);
+            }
+          } else {
+            player.scores.push(points);
+            player.totalScore += points;
+            player.consecutiveZs = 0;
+          }
+        }
+
+        if (points !== 'Z' && !finalRoundTriggered && player.totalScore >= targetScore) {
+          setFinalRoundTriggered(true);
+          setTriggeringPlayer(playerIndex);
+          setPlayersWhoHadFinalTurn(new Set([playerIndex]));
+        }
+
+        setPlayers(newPlayers);
+
+        if (finalRoundTriggered) {
+          const newPlayersWhoHadTurn = new Set(playersWhoHadFinalTurn);
+          newPlayersWhoHadTurn.add(playerIndex);
+          setPlayersWhoHadFinalTurn(newPlayersWhoHadTurn);
+
+          if (newPlayersWhoHadTurn.size === players.length) {
+            endGame(newPlayers);
+          }
+        }
+      };
+
+      const endGame = (finalPlayers) => {
+        const winner = finalPlayers.reduce((max, player) => 
+          player.totalScore > max.totalScore ? player : max
+        );
+
+        const newWinHistory = { ...winHistory };
+        newWinHistory[winner.name] = (newWinHistory[winner.name] || 0) + 1;
+        setWinHistory(newWinHistory);
+        setGameState('finished');
+      };
+
+      const playAgain = () => {
+        const playerNamesFromCurrent = players.map(p => p.name);
+        setPlayerNames(playerNamesFromCurrent);
+        setGameState('setup');
+        setPlayers([]);
+        setFinalRoundTriggered(false);
+        setTriggeringPlayer(null);
+        setPlayersWhoHadFinalTurn(new Set());
+      };
+
+      const getLeader = () => {
+        if (players.length === 0) return null;
+        return players.reduce((max, player) => 
+          player.totalScore > max.totalScore ? player : max
+        );
+      };
+
+      if (gameState === 'setup') {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+            <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
+              <h1 className="text-4xl font-bold text-center text-indigo-600 mb-8">
+                Zilch Scorekeeper
+              </h1>
+
+              {Object.keys(winHistory).length > 0 && (
+                <div className="mb-6 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200">
+                  <h2 className="text-lg font-semibold text-yellow-800 mb-2">Win History</h2>
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(winHistory).map(([name, wins]) => (
+                      <div key={name} className="bg-white px-3 py-1 rounded-full border border-yellow-300">
+                        <span className="font-semibold">{name}:</span> {wins} {wins === 1 ? 'win' : 'wins'}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Target Score to Win
+                  </label>
+                  <input
+                    type="number"
+                    value={targetScore}
+                    onChange={(e) => setTargetScore(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Players (2-7)
+                  </label>
+                  {playerNames.map((name, index) => (
+                    <div key={index} className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => updatePlayerName(index, e.target.value)}
+                        placeholder={`Player ${index + 1} name`}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                      {playerNames.length > 2 && (
+                        <button
+                          onClick={() => removePlayerNameField(index)}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {playerNames.length < 7 && (
+                    <button
+                      onClick={addPlayerNameField}
+                      className="mt-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                      + Add Player
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={startGame}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold text-lg"
+                >
+                  Start Game
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (gameState === 'finished') {
+        const winner = players.reduce((max, player) => 
+          player.totalScore > max.totalScore ? player : max
+        );
+
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-8">
+            <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
+              <div className="text-center mb-8">
+                <div className="text-6xl mb-4">🏆</div>
+                <h1 className="text-4xl font-bold text-green-600 mb-2">
+                  {winner.name} Wins!
+                </h1>
+                <p className="text-2xl text-gray-700">Final Score: {winner.totalScore}</p>
+              </div>
+
+              <div className="mb-8">
+                <h2 className="text-2xl font-semibold mb-4">Final Standings</h2>
+                <div className="space-y-2">
+                  {[...players].sort((a, b) => b.totalScore - a.totalScore).map((player, index) => (
+                    <div key={player.name} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                      <span className="text-lg font-medium">
+                        {index + 1}. {player.name}
+                      </span>
+                      <span className="text-xl font-bold">{player.totalScore}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={playAgain}
+                className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold text-lg"
+              >
+                Play Another Game?
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      const leader = getLeader();
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-4">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
+              <div className="flex justify-between items-center mb-4">
+                <h1 className="text-3xl font-bold text-indigo-600">Zilch Scorekeeper</h1>
+                <div className="text-right">
+                  <div className="text-sm text-gray-600">Target Score</div>
+                  <div className="text-2xl font-bold text-indigo-600">{targetScore}</div>
+                </div>
+              </div>
+
+              {finalRoundTriggered && (
+                <div className="mb-4 p-3 bg-yellow-100 border-2 border-yellow-400 rounded-lg text-center">
+                  <p className="text-lg font-semibold text-yellow-800">
+                    🎯 Final Round! {players[triggeringPlayer].name} reached {targetScore} points!
+                  </p>
+                  <p className="text-sm text-yellow-700">Everyone gets one more turn</p>
+                </div>
+              )}
+
+              {leader && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg text-center">
+                  <span className="font-semibold text-blue-800">
+                    🏆 Leader: {leader.name} with {leader.totalScore} points
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {players.map((player, index) => (
+                <PlayerCard
+                  key={player.name}
+                  player={player}
+                  playerIndex={index}
+                  addScore={addScore}
+                  isLeader={leader && leader.name === player.name}
+                  hadFinalTurn={playersWhoHadFinalTurn.has(index)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function PlayerCard({ player, playerIndex, addScore, isLeader, hadFinalTurn }) {
+      const [inputValue, setInputValue] = useState('');
+
+      const handleAddScore = () => {
+        const points = parseInt(inputValue);
+        if (!isNaN(points) && points >= 0) {
+          addScore(playerIndex, points);
+          setInputValue('');
+        }
+      };
+
+      const handleAddZilch = () => {
+        addScore(playerIndex, 'Z');
+      };
+
+      const handleKeyPress = (e) => {
+        if (e.key === 'Enter') {
+          handleAddScore();
+        }
+      };
+
+      return (
+        <div className={`bg-white rounded-lg shadow-lg p-4 ${isLeader ? 'ring-4 ring-yellow-400' : ''}`}>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold text-gray-800">{player.name}</h2>
+            {isLeader && <span className="text-2xl">🏆</span>}
+          </div>
+
+          <div className="mb-3">
+            <div className="text-3xl font-bold text-indigo-600 mb-1">{player.totalScore}</div>
+            {player.consecutiveZs > 0 && (
+              <div className="text-sm text-red-600 font-semibold">
+                Consecutive Zilches: {player.consecutiveZs} 💩
+              </div>
+            )}
+            {hadFinalTurn && (
+              <div className="text-sm text-green-600 font-semibold">✓ Final turn taken</div>
+            )}
+          </div>
+
+          <div className="flex gap-2 mb-3">
+            <input
+              type="number"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Points"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            <button
+              onClick={handleAddScore}
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold"
+            >
+              Add
+            </button>
+          </div>
+
+          {player.hasStarted && (
+            <button
+              onClick={handleAddZilch}
+              className="w-full py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold mb-3"
+            >
+              Zilch 💩
+            </button>
+          )}
+
+          <div className="border-t pt-3">
+            <div className="text-xs text-gray-600 font-semibold mb-2">Round History:</div>
+            <div className="max-h-32 overflow-y-auto space-y-1">
+              {player.scores.length === 0 ? (
+                <div className="text-xs text-gray-400 italic">No rounds yet</div>
+              ) : (
+                player.scores.map((score, idx) => (
+                  <div key={idx} className="text-sm flex justify-between items-center p-1 bg-gray-50 rounded">
+                    <span className="text-gray-600">Round {idx + 1}:</span>
+                    <span className={score === 'Z' ? 'text-red-600 font-bold' : 'text-gray-800 font-semibold'}>
+                      {score === 'Z' ? '💩' : `+${score}`}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ZilchScorekeeper />);
+  </script>
+</body>
+</html>
